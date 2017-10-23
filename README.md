@@ -10,9 +10,9 @@ postlist.save('Th_img_highscore.dat') # Save post data to a file
 ```
 The client uses SQLite saving part of the post data, see source code for more detail
 
-- Download posts
+- Download posts with url saved in database
 ```python
 from danbooru import Danbooru
 K=Danbooru(sitename='Konachan')
-K.multi_download(dir=None,threadcount=5)
+K.download(dir=None,threadcount=5)
 ```
