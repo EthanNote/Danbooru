@@ -6,6 +6,27 @@ import os
 import threading
 import shutil
 
+def webread(url, readtimeout):
+    opener = urllib.request.build_opener()
+    opener.addheaders = [('User-Agent','Mozilla/5.0 (Windows NT 6.1) AppleWebKit/537.11 (KHTML, like Gecko) Chrome/23.0.1271.64 Safari/537.11'),
+                                    ('Accept','text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8')]
+    return opener.open(url,None, readtimeout).read()
+
+
+def trywebread(url, timeout, retrytimes=3):
+    data=None
+    retrycount=0
+    while retrycount<=retrytimes:
+        try:
+            if(retrycount>0): 
+                print('Retry %d'%(retrycount))
+            data=webread(url, timeout)
+            return data
+        except Exception as e:
+            print('Exception while loading %s, %s'%(url, e))
+            retrycount+=1
+
+
 class Danbooru:
 
 	class Searchoption:
@@ -49,52 +70,44 @@ class Danbooru:
 		for i in page:
 			url = self.baseurl + '/post.json?tags=%s&page=%s&limit=%s' % (tags, i, page_limit)
 			print('Request url: ' + url)
-			headers = ('User-Agent','Mozilla/5.0 (Windows NT 6.1) AppleWebKit/537.11 (KHTML, like Gecko) Chrome/23.0.1271.64 Safari/537.11')
-			opener = urllib.request.build_opener()
-			opener.addheaders = [('User-Agent','Mozilla/5.0 (Windows NT 6.1) AppleWebKit/537.11 (KHTML, like Gecko) Chrome/23.0.1271.64 Safari/537.11'),
-								('Accept','text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8')]
-			response_json=data = opener.open(url).read()
-			#response_json = request.urlopen(url)
-			post_list += json.loads(response_json.decode())
-			print('Get %d post(s)'%(len(post_list),))
-			for post in post_list:
+			
+			response_json=None
+			retrycount=0
+			while retrycount<5:
 				try:
-					self.db.cursor().execute('insert into posts values(%d,\'%s\',\'%s\',\'%s\',%d,%d,%d)' % (post['id'],post['tags'],post['sample_url'], post['file_url'],post['file_size'],post['width'],post['height']))
+					response_json=webread(url).decode() 
+					break
+				except Exception as e:
+					retrycount+=1
+					print('%s. retry %d'%(e, retrycount))
+			if(response_json==None):
+				print('Failed, maxmium retry times reached')
+
+			response_list= json.loads(response_json)
+			post_list += response_list
+			insert=0
+			ex={}
+			for post in response_list:
+				try:
+					self.db.cursor().execute('insert into posts values(?,?,?,?,?,?,?)', 
+							(post['id'],post['tags'],post['sample_url'], post['file_url'],post['file_size'],post['width'],post['height']))
 					self.db.commit()
-				except:
-					pass
+					insert+=1
+				except Exception as e:
+					if str(e) not in ex.keys():
+						ex[str(e)]=1
+					else:
+						ex[str(e)]+=1			
+			print('%d out of %d posts added to database, %d insertion failure'%(insert,len(response_list), len(response_list)-insert))
+			if len(ex)>0:
+				print('Failures:')
+				for i in ex.keys():
+					print('  [ %d ] %s'%(ex[i], i))
+
 			
 		return PostList(self, post_list)
 
-	def download(self, dir=None):
-		if dir == None:
-			dir = self.sitename
-			
-		if not os.path.exists(dir):
-			os.mkdir(dir)
-		def progress_bar(a,b,c):
-			per = 100.0 * a * b / c  
-			if per > 100:  
-				per = 100  
-			print('\r[ %.2f%% ]' % per, end='')
-
-		posts = self.db.cursor().execute('select id, file_url, file_size from posts').fetchall()
-		for post in posts:
-			id = post[0]
-			url = 'http:' + post[1]		
-			size = post[2]	
-			path = dir + '/' + str(id) + url[-4:]
-			
-			if(os.path.exists(path) and os.path.getsize(path)==size):
-				continue
-			try:
-				print('Downloading %s from %s' % (path, url))
-				request.urlretrieve(url,path,progress_bar)
-				print("Done           ")
-			except:
-				print('Error, skip')
-
-	def multi_download(self, dir=None, threadcount=5, postlist=None):
+	def download(self, dir=None, threadcount=5, postlist=None):
 		if dir == None:
 			dir = self.sitename
 
@@ -102,26 +115,40 @@ class Danbooru:
 			os.mkdir(dir)
 
 		threadlist = []
+		tasklist=[]
 
 		def download_thread(url, path):
 			if(os.path.exists(path)):
 				return
 			print('Downloading ' + url)
-			request.urlretrieve(url, path)
-			print('Done ' + path)
+			tasklist.append(path)
+
+			image=trywebread(url, 60)
+			if(image!=None):
+				with open(path,'wb') as f:
+					f.write(image)
+					print('Done ' + path)
+			else:
+				print('Failed ' + path)
+			tasklist.remove(path)
+			print('Remaining tasks: '+str(tasklist))
 
 		if postlist == None:
-			postlist = []#self.db.cursor().execute('select id, file_url, file_size from posts').fetchall()
-			query_result = self.db.cursor().execute('select id, file_url, file_size from posts')
-			while True:
-				post = query_result.fetchone()
-				if post == None:
-					break
-				postlist.append({'id':post[0], 'file_url':post[1]})
+			print('Reading posts from database')
+			table= self.db.cursor().execute('select id, file_url, file_size from posts').fetchall()
+			postlist=[]
+			for row in table:
+				postlist.append({'id':row[0], 'file_url':row[1]})
+				
+		
+		print('%d posts to download'%(len(postlist), ))
 
 		for post in postlist:
 			id = post['id']
-			url = 'http:' + post['file_url']			
+			url = post['file_url']			
+			if(url[0:4] != 'http'):
+				url='http:'+url
+
 			path = dir + '/' + str(id) + url[-4:]
 
 			if dir != self.sitename:
@@ -133,7 +160,7 @@ class Danbooru:
 			thread = threading.Thread(target=download_thread, args=(url, path))
 			threadlist.append(thread)
 			thread.start()
-			while len(threadlist) > threadcount:
+			while len(threadlist) >= threadcount:
 				for t in threadlist:
 					if not t.is_alive():
 						t.join()
