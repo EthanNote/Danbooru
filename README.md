@@ -1,7 +1,7 @@
 # Danbooru Client API
 
-## Usage
-- Get post data from a Danbooru site
+## Examples
+#### Get post data from a Danbooru site
 ```python
 from danbooru import Danbooru
 
@@ -18,7 +18,7 @@ postlist.save('Th_img_highscore.dat')
 ```
 The client uses SQLite saving part of the post data, see source code for more detail
 
-- Download posts with url saved in database
+#### Download posts with url saved in database
 ```python
 from danbooru import Danbooru
 K=Danbooru(sitename='Konachan')
@@ -28,4 +28,13 @@ K=Danbooru(sitename='Konachan')
 # If you wish to download a specific post list instead of all posts in database, pass the post
 # list parameter. see source code for detail
 K.download(dir=None,threadcount=5)
+```
+
+#### Get ordered posts and download to different locations
+```python
+from danbooru import Danbooru
+D=Danbooru()
+for i in range(1,101):
+    postlist=D.get_post('order:score',i,100)
+    postlist.download('konachan_best\%d'%(i,))
 ```
