@@ -6,7 +6,7 @@ import os
 import threading
 import shutil
 
-def webread(url, readtimeout):
+def webread(url, readtimeout=10):
     opener = urllib.request.build_opener()
     opener.addheaders = [('User-Agent','Mozilla/5.0 (Windows NT 6.1) AppleWebKit/537.11 (KHTML, like Gecko) Chrome/23.0.1271.64 Safari/537.11'),
                                     ('Accept','text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8')]
@@ -112,7 +112,7 @@ class Danbooru:
 			dir = self.sitename
 
 		if not os.path.exists(dir):
-			os.mkdir(dir)
+			os.makedirs(dir)
 
 		threadlist = []
 		tasklist=[]
@@ -177,7 +177,7 @@ class PostList:
 		self.postlist = postlist
 
 	def download(self, dir=None,threadcount=5):
-		self.danbooru.multi_download(dir=dir, threadcount=threadcount, postlist=self.postlist)
+		self.danbooru.download(dir=dir, threadcount=threadcount, postlist=self.postlist)
 
 	def save(self, name):
 		with open(name, 'wb') as f:
