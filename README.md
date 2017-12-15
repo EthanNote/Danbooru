@@ -34,7 +34,5 @@ K.download(dir=None,threadcount=5)
 ```python
 from danbooru import Danbooru
 D=Danbooru()
-for i in range(1,101):
-    postlist=D.get_post('order:score',i,100)
-    postlist.download('konachan_best\%d'%(i,))
+D.split_download('konachan_best', D.create_postlist(order='score'), 100)
 ```
