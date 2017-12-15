@@ -7,13 +7,14 @@ import threading
 import shutil
 
 def webread(url, readtimeout=10):
+	"""read page"""
     opener = urllib.request.build_opener()
     opener.addheaders = [('User-Agent','Mozilla/5.0 (Windows NT 6.1) AppleWebKit/537.11 (KHTML, like Gecko) Chrome/23.0.1271.64 Safari/537.11'),
                                     ('Accept','text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8')]
     return opener.open(url,None, readtimeout).read()
 
-
 def trywebread(url, timeout, retrytimes=3):
+	"""read page, retry if failed"""
     data=None
     retrycount=0
     while retrycount<=retrytimes:
@@ -30,6 +31,7 @@ def trywebread(url, timeout, retrytimes=3):
 class Danbooru:
 
 	class Searchoption:
+		"""search options, use as tags"""
 		class Rating:
 			safe = 'rating:safe'
 			questionable = 'rating:questionable'
@@ -44,6 +46,7 @@ class Danbooru:
 			self.db.execute('CREATE TABLE posts( \
 								id INT PRIMARY KEY, \
 								tags VARCHAR(512), \
+								score INT, \
 								sample_url VARCHAR(512), \
 								file_url VARCHAR(512), \
 								file_size INT, \
@@ -59,6 +62,7 @@ class Danbooru:
 		self.sitename = sitename
 
 	def get_post(self, tags=[], page=[1], page_limit=5):
+		"""send a post request to danbooru site, post data in json format"""
 		if(type(page) is int):
 			page = [page]
 		if type(tags) is list:
@@ -89,8 +93,8 @@ class Danbooru:
 			ex={}
 			for post in response_list:
 				try:
-					self.db.cursor().execute('insert into posts values(?,?,?,?,?,?,?)', 
-							(post['id'],post['tags'],post['sample_url'], post['file_url'],post['file_size'],post['width'],post['height']))
+					self.db.cursor().execute('insert into posts values(?,?,?,?,?,?,?,?)', 
+							(post['id'],post['tags'],post['score'], post['sample_url'], post['file_url'],post['file_size'],post['width'],post['height']))
 					self.db.commit()
 					insert+=1
 				except Exception as e:
@@ -103,11 +107,35 @@ class Danbooru:
 				print('Failures:')
 				for i in ex.keys():
 					print('  [ %d ] %s'%(ex[i], i))
-
 			
 		return PostList(self, post_list)
 
-	def download(self, dir=None, threadcount=5, postlist=None):
+
+	def create_postlist(self, **kwargs):
+		"""search local database, create a list for download"""
+		table=None
+		if('order' in kwargs.keys()):
+			if(kwargs['order']=='score'):
+				table= self.db.cursor().execute('SELECT id, file_url, file_size FROM posts ORDER BY score DESC').fetchall()
+			elif(kwargs['order']=='id'):
+				table= self.db.cursor().execute('SELECT id, file_url, file_size FROM posts ORDER BY id').fetchall()
+		else:
+			table= self.db.cursor().execute('select id, file_url, file_size from posts').fetchall()
+		postlist=[]
+		for row in table:
+			postlist.append({'id':row[0], 'file_url':row[1]})
+		return postlist
+
+
+	def split_download(self, dir, postlist, splitsize,threadcount=5):
+		"""split images into defferent directories"""
+		for i in range(int(len(postlist)/splitsize)+1):
+			sublist=postlist[i*splitsize:(i+1)*splitsize]
+			subdir=dir+'/'+str(i+1)
+			self.download(subdir, threadcount, sublist)
+
+	def download(self, dir, threadcount, postlist):
+		"""multi-thread download"""
 		if dir == None:
 			dir = self.sitename
 
@@ -115,9 +143,12 @@ class Danbooru:
 			os.makedirs(dir)
 
 		threadlist = []
-		tasklist=[]
+		tasklist=[]		
 
-		def download_thread(url, path):
+		if(postlist==None):
+			postlist=self.create_postlist()
+
+		def download_thread(url, path, tasklist):
 			if(os.path.exists(path)):
 				return
 			print('Downloading ' + url)
@@ -131,15 +162,7 @@ class Danbooru:
 			else:
 				print('Failed ' + path)
 			tasklist.remove(path)
-			print('Remaining tasks: '+str(tasklist))
-
-		if postlist == None:
-			print('Reading posts from database')
-			table= self.db.cursor().execute('select id, file_url, file_size from posts').fetchall()
-			postlist=[]
-			for row in table:
-				postlist.append({'id':row[0], 'file_url':row[1]})
-				
+			print('Remaining tasks: '+str(tasklist))		
 		
 		print('%d posts to download'%(len(postlist), ))
 
@@ -157,7 +180,7 @@ class Danbooru:
 					shutil.copy(basepath ,dir)
 					continue
 
-			thread = threading.Thread(target=download_thread, args=(url, path))
+			thread = threading.Thread(target=download_thread, args=(url, path, tasklist))
 			threadlist.append(thread)
 			thread.start()
 			while len(threadlist) >= threadcount:
