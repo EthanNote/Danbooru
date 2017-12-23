@@ -66,7 +66,7 @@ class Danbooru:
 		if(type(page) is int):
 			page = [page]
 		if type(tags) is list:
-			tags = ' '.join(tags)
+			tags = '%20'.join(tags)
 		if self._18X:
 			tags +='+' + Danbooru.Searchoption.Rating.safe
 
@@ -154,6 +154,7 @@ class Danbooru:
 			print('Downloading ' + url)
 			tasklist.append(path)
 
+			# read web image to memory, write to file when finished
 			image=trywebread(url, 60)
 			if(image!=None):
 				with open(path,'wb') as f:
@@ -174,10 +175,17 @@ class Danbooru:
 
 			path = dir + '/' + str(id) + url[-4:]
 
+			# check if image already exists
+			if(os.path.exists(path)):
+				print("File exists: %s,  skip"%(path, ))
+				continue
+
+			# check if image already exists in a shared dir
 			if dir != self.sitename:
 				basepath = self.sitename + '/' + str(id) + url[-4:]
 				if os.path.exists(basepath):
 					shutil.copy(basepath ,dir)
+					print("File exists at: %s,  copy to %s"%(basepath, dir))
 					continue
 
 			thread = threading.Thread(target=download_thread, args=(url, path, tasklist))
