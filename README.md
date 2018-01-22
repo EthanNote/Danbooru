@@ -1,7 +1,8 @@
 # Danbooru Client API
+Download anime wallpapers from Danbooru sites like Konachan.com, Yande.re
 
-## Examples
-#### Get post data from a Danbooru site
+### Examples
+##### Get post data from a Danbooru site
 ```python
 from danbooru import Danbooru
 
@@ -18,7 +19,7 @@ postlist.save('Th_img_highscore.dat')
 ```
 The client uses SQLite saving part of the post data, see source code for more detail
 
-#### Download posts with url saved in database
+##### Download posts with url saved in database
 ```python
 from danbooru import Danbooru
 K=Danbooru(sitename='Konachan')
@@ -30,7 +31,7 @@ K=Danbooru(sitename='Konachan')
 K.download(dir=None,threadcount=5)
 ```
 
-#### Get ordered posts and download to different locations
+##### Get ordered posts and download to different locations
 ```python
 from danbooru import Danbooru
 D=Danbooru()
